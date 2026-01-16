@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kiosk 2 - Rebuilding NP | Memory Trail</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        .user-banner {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-family: 'Segoe UI', sans-serif;
+        }
+        .user-banner .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .user-banner .kiosk-badge {
+            background: rgba(255,255,255,0.2);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .user-banner .trail-id {
+            background: rgba(255,255,255,0.2);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+        .user-banner .points {
+            background: #fbbf24;
+            color: #000;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+        }
+        .no-user-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            color: white;
+            text-align: center;
+            font-family: 'Segoe UI', sans-serif;
+        }
+        .no-user-overlay .content {
+            max-width: 400px;
+            padding: 40px;
+        }
+        .no-user-overlay h2 {
+            font-size: 28px;
+            margin-bottom: 15px;
+        }
+        .no-user-overlay p {
+            font-size: 18px;
+            margin-bottom: 25px;
+            opacity: 0.9;
+        }
+        .no-user-overlay a {
+            display: inline-block;
+            background: #10b981;
+            color: white;
+            padding: 15px 30px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        
+        .puzzle-piece {
+            cursor: grab;
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+        
+        .puzzle-piece:active {
+            cursor: grabbing;
+        }
+        
+        .puzzle-piece.dragging {
+            opacity: 0.8;
+            transform: scale(1.05) rotate(2deg);
+            z-index: 1000;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+        }
+        
+        .puzzle-slot {
+            transition: all 0.2s ease;
+        }
+        
+        .puzzle-slot.highlight {
+            box-shadow: inset 0 0 0 3px #4ade80;
+            transform: scale(1.02);
+        }
+        
+        .puzzle-slot.wrong {
+            animation: shake 0.3s ease;
+            box-shadow: inset 0 0 0 3px #ef4444;
+        }
+        
+        .puzzle-slot.correct {
+            animation: pop 0.3s ease;
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        
+        @keyframes pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes celebrate {
+            0% { transform: scale(1) rotate(0deg); }
+            25% { transform: scale(1.1) rotate(-5deg); }
+            50% { transform: scale(1.2) rotate(5deg); }
+            75% { transform: scale(1.1) rotate(-5deg); }
+            100% { transform: scale(1) rotate(0deg); }
+        }
+        
+        .celebrate {
+            animation: celebrate 0.6s ease;
+        }
+        
+        .confetti {
+            position: fixed;
+            width: 10px;
+            height: 10px;
+            pointer-events: none;
+            animation: fall 3s linear forwards;
+        }
+        
+        @keyframes fall {
+            0% { transform: translateY(-100vh) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+        }
+        
+        .image-piece {
+            background-size: cover;
+            background-repeat: no-repeat;
+            image-rendering: crisp-edges;
+        }
+    </style>
+</head>
+<body>
+    <!-- User Banner -->
+    <div class="user-banner" id="userBanner" style="display: none;">
+        <div class="user-info">
+            <span class="kiosk-badge">📍 KIOSK 2</span>
+            <span>🎮 Playing: <strong id="playerName">Student</strong></span>
+            <span class="trail-id" id="playerTrailId">MT-XXXXXX</span>
+        </div>
+        <div class="points" id="playerPoints">0 pts</div>
+    </div>
+
+    <!-- No User Overlay -->
+    <div class="no-user-overlay" id="noUserOverlay" style="display: none;">
+        <div class="content">
+            <h2>⚠️ No Player Detected</h2>
+            <p>Please scan your QR code at the kiosk first to play this game.</p>
+            <a href="kiosk2.html">Go to Kiosk 2 Scanner</a>
+        </div>
+    </div>
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // ===== MEMORY TRAIL INTEGRATION =====
+const MemoryTrailIntegration = {
+    getCurrentUser: function() {
+        const kioskUser = sessionStorage.getItem('kioskUser');
+        if (kioskUser) {
+            return JSON.parse(kioskUser);
+        }
+        const currentUser = localStorage.getItem('currentUser');
+        if (currentUser) {
+            return JSON.parse(currentUser);
+        }
+        return null;
+    },
+
+    awardPoints: function(points, gameId) {
+        const user = this.getCurrentUser();
+        if (!user) return false;
+
+        // Only allow once per activity
+        if (user.completedGames && user.completedGames.includes(gameId)) {
+            return { success: false, alreadyCompleted: true };
+        }
+
+        user.points = (user.points || 0) + points;
+        if (!user.completedGames) user.completedGames = [];
+        user.completedGames.push(gameId);
+
+        // Upgrade card version based on number of unique activities
+        const totalActivities = 4; // Set to your total number of activities
+        user.cardVersion = Math.min(1 + user.completedGames.length, totalActivities);
+
+        this.saveUser(user);
+
+        return { success: true, newPoints: user.points, cardVersion: user.cardVersion };
+    },
+
+    saveUser: function(user) {
+        localStorage.setItem('currentUser', JSON.stringify(user));
+        const users = JSON.parse(localStorage.getItem('memoryTrailUsers') || '[]');
+        const index = users.findIndex(u => u.trailId === user.trailId);
+        if (index !== -1) {
+            users[index] = user;
+            localStorage.setItem('memoryTrailUsers', JSON.stringify(users));
+        }
+        if (sessionStorage.getItem('kioskUser')) {
+            sessionStorage.setItem('kioskUser', JSON.stringify(user));
+        }
+    }
+};
+        // Icons
+        const ArrowLeftIcon = () => (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>
+            </svg>
+        );
+
+        const RotateCwIcon = () => (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <path d="M21 2v6h-6"/><path d="M21 13a9 9 0 1 1-3-7.7L21 8"/>
+            </svg>
+        );
+
+        const EyeIcon = () => (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+            </svg>
+        );
+
+        const RebuildingNP = () => {
+            const [gameState, setGameState] = useState('select');
+            const [selectedBuilding, setSelectedBuilding] = useState(null);
+            const [gridSize, setGridSize] = useState(3);
+            const [pieces, setPieces] = useState([]);
+            const [placedPieces, setPlacedPieces] = useState({});
+            const [draggedPiece, setDraggedPiece] = useState(null);
+            const [highlightedSlot, setHighlightedSlot] = useState(null);
+            const [wrongSlot, setWrongSlot] = useState(null);
+            const [correctSlot, setCorrectSlot] = useState(null);
+            const [showPreview, setShowPreview] = useState(false);
+            const [timeElapsed, setTimeElapsed] = useState(0);
+            const [moves, setMoves] = useState(0);
+            const [confetti, setConfetti] = useState([]);
+            const [imageLoaded, setImageLoaded] = useState({});
+            
+            // Memory Trail State
+            const [currentUser, setCurrentUser] = useState(null);
+            const [pointsAwarded, setPointsAwarded] = useState(null);
+            const [alreadyPlayed, setAlreadyPlayed] = useState(false);
+
+            const GAME_ID = 'kiosk2-rebuilding-np';
+
+            // Points based on difficulty and stars
+            const POINTS_CONFIG = {
+                easy: { base: 15, perStar: 5 },    // 15-30 pts
+                medium: { base: 25, perStar: 5 },  // 25-40 pts
+                hard: { base: 40, perStar: 7 }     // 40-61 pts
+            };
+
+            // Check for user on load
+            useEffect(() => {
+                const user = MemoryTrailIntegration.getCurrentUser();
+                if (user) {
+                    setCurrentUser(user);
+                    document.getElementById('userBanner').style.display = 'flex';
+                    document.getElementById('playerName').textContent = user.fullName.split(' ')[0];
+                    document.getElementById('playerTrailId').textContent = user.trailId;
+                    document.getElementById('playerPoints').textContent = user.points + ' pts';
+
+                    if (user.completedGames && user.completedGames.includes(GAME_ID)) {
+                        setAlreadyPlayed(true);
+                    }
+                } else {
+                    document.getElementById('noUserOverlay').style.display = 'flex';
+                }
+            }, []);
+
+            const buildings = [
+                {
+                    id: 'oldlibrary',
+                    name: "NP Library",
+                    era: "1970s - 1980s",
+                    description: "The original Ngee Ann Polytechnic Library from the early days.",
+                    difficulty: "Easy",
+                    difficultyKey: "easy",
+                    gridSize: 3,
+                    imageUrl: "https://i.ibb.co/5XpCR1P9/oldlibrary.jpg",
+                    fallbackGradient: "from-amber-700 via-orange-600 to-yellow-500",
+                    facts: [
+                        "Served as the main library during NP's early years",
+                        "Featured traditional library layout with physical card catalogues",
+                        "Students would queue to borrow books and reference materials",
+                        "The building reflected the architectural style of 1970s Singapore"
+                    ]
+                },
+                {
+                    id: 'convention',
+                    name: "NP Convention Centre",
+                    era: "1980s",
+                    description: "The historic NP Convention Centre captured in its early days.",
+                    difficulty: "Medium",
+                    difficultyKey: "medium",
+                    gridSize: 4,
+                    imageUrl: "https://i.ibb.co/3ygfzsZM/convention.jpg",
+                    fallbackGradient: "from-blue-700 via-indigo-600 to-purple-500",
+                    facts: [
+                        "One of the first major buildings on the Clementi campus",
+                        "Has witnessed thousands of graduation ceremonies",
+                        "Originally designed with distinctive 80s architecture",
+                        "Continues to serve as a key venue for NP's major events"
+                    ]
+                },
+                {
+                    id: 'oldngeeann',
+                    name: "Old Ngee Ann Building",
+                    era: "1960s - 1970s",
+                    description: "A rare glimpse of the original Ngee Ann College building.",
+                    difficulty: "Hard",
+                    difficultyKey: "hard",
+                    gridSize: 5,
+                    imageUrl: "https://i.ibb.co/Q7GCf69V/oldngeeann.jpg",
+                    fallbackGradient: "from-gray-700 via-slate-600 to-zinc-500",
+                    facts: [
+                        "Ngee Ann College was founded in 1963 with just 116 students",
+                        "Originally established to provide Chinese-medium tertiary education",
+                        "The Ngee Ann Kongsi played a crucial role in funding the college",
+                        "Transformed into Ngee Ann Polytechnic in 1982"
+                    ]
+                }
+            ];
+
+            // Preload images
+            useEffect(() => {
+                buildings.forEach(building => {
+                    if (building.imageUrl) {
+                        const img = new Image();
+                        img.crossOrigin = "anonymous";
+                        img.onload = () => {
+                            setImageLoaded(prev => ({ ...prev, [building.id]: true }));
+                        };
+                        img.onerror = () => {
+                            setImageLoaded(prev => ({ ...prev, [building.id]: false }));
+                        };
+                        img.src = building.imageUrl;
+                    }
+                });
+            }, []);
+
+            // Timer
+            useEffect(() => {
+                let interval;
+                if (gameState === 'playing') {
+                    interval = setInterval(() => {
+                        setTimeElapsed(prev => prev + 1);
+                    }, 1000);
+                }
+                return () => clearInterval(interval);
+            }, [gameState]);
+
+            const initializePuzzle = (building) => {
+                const size = building.gridSize;
+                const totalPieces = size * size;
+                
+                const newPieces = [];
+                for (let i = 0; i < totalPieces; i++) {
+                    newPieces.push({
+                        id: i,
+                        correctPosition: i,
+                        row: Math.floor(i / size),
+                        col: i % size,
+                    });
+                }
+                
+                const shuffled = [...newPieces].sort(() => Math.random() - 0.5);
+                setPieces(shuffled);
+                setPlacedPieces({});
+                setGridSize(size);
+            };
+
+            const startGame = (building) => {
+                setSelectedBuilding(building);
+                initializePuzzle(building);
+                setGameState('playing');
+                setTimeElapsed(0);
+                setMoves(0);
+                setShowPreview(false);
+            };
+
+            const formatTime = (seconds) => {
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                return `${mins}:${secs.toString().padStart(2, '0')}`;
+            };
+
+            const handleDragStart = (piece) => {
+                setDraggedPiece(piece);
+            };
+
+            const handleDragEnd = () => {
+                setDraggedPiece(null);
+                setHighlightedSlot(null);
+            };
+
+            const handleDragOver = (slotIndex) => {
+                if (draggedPiece && !placedPieces[slotIndex]) {
+                    setHighlightedSlot(slotIndex);
+                }
+            };
+
+            const handleDrop = (slotIndex) => {
+                if (!draggedPiece) return;
+                if (placedPieces[slotIndex]) return;
+
+                setMoves(m => m + 1);
+
+                if (draggedPiece.correctPosition === slotIndex) {
+                    playSound('correct');
+                    setCorrectSlot(slotIndex);
+                    setTimeout(() => setCorrectSlot(null), 300);
+                    
+                    const newPlaced = { ...placedPieces, [slotIndex]: draggedPiece };
+                    setPlacedPieces(newPlaced);
+                    setPieces(pieces.filter(p => p.id !== draggedPiece.id));
+                    
+                    if (Object.keys(newPlaced).length === gridSize * gridSize) {
+                        setTimeout(() => {
+                            handleGameComplete();
+                        }, 500);
+                    }
+                } else {
+                    playSound('wrong');
+                    setWrongSlot(slotIndex);
+                    setTimeout(() => setWrongSlot(null), 300);
+                }
+                
+                setDraggedPiece(null);
+                setHighlightedSlot(null);
+            };
+
+            const handleGameComplete = () => {
+                const stars = getStars();
+                const config = POINTS_CONFIG[selectedBuilding.difficultyKey];
+                const totalPoints = config.base + (stars * config.perStar);
+
+                // Award points if not already played
+                if (!alreadyPlayed && currentUser) {
+                    const result = MemoryTrailIntegration.awardPoints(totalPoints, GAME_ID);
+                    if (result.success) {
+                        setPointsAwarded(totalPoints);
+                        document.getElementById('playerPoints').textContent = result.newPoints + ' pts';
+                        
+                        // Update currentUser state with new card version
+                        setCurrentUser(prev => ({
+                            ...prev,
+                            points: result.newPoints,
+                            cardVersion: result.cardVersion
+                        }));
+                    }
+                }
+
+                setGameState('completed');
+                triggerConfetti();
+                playSound('complete');
+            };
+
+            const handleTouchStart = (piece, e) => {
+                e.preventDefault();
+                setDraggedPiece(piece);
+            };
+
+            const handleTouchEnd = (e) => {
+                if (!draggedPiece) return;
+                
+                const touch = e.changedTouches[0];
+                const element = document.elementFromPoint(touch.clientX, touch.clientY);
+                const slotElement = element?.closest('[data-slot]');
+                
+                if (slotElement) {
+                    const slotIndex = parseInt(slotElement.dataset.slot);
+                    handleDrop(slotIndex);
+                }
+                
+                setDraggedPiece(null);
+                setHighlightedSlot(null);
+            };
+
+            const playSound = (type) => {
+                try {
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const oscillator = audioContext.createOscillator();
+                    const gainNode = audioContext.createGain();
+                    
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+                    
+                    if (type === 'correct') {
+                        oscillator.frequency.setValueAtTime(523, audioContext.currentTime);
+                        oscillator.frequency.setValueAtTime(659, audioContext.currentTime + 0.1);
+                        gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+                        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+                        oscillator.start(audioContext.currentTime);
+                        oscillator.stop(audioContext.currentTime + 0.3);
+                    } else if (type === 'wrong') {
+                        oscillator.frequency.setValueAtTime(180, audioContext.currentTime);
+                        oscillator.type = 'sawtooth';
+                        gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
+                        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+                        oscillator.start(audioContext.currentTime);
+                        oscillator.stop(audioContext.currentTime + 0.2);
+                    } else if (type === 'complete') {
+                        [523, 659, 784, 1047].forEach((freq, i) => {
+                            const osc = audioContext.createOscillator();
+                            const gain = audioContext.createGain();
+                            osc.connect(gain);
+                            gain.connect(audioContext.destination);
+                            osc.frequency.setValueAtTime(freq, audioContext.currentTime + i * 0.15);
+                            gain.gain.setValueAtTime(0.2, audioContext.currentTime + i * 0.15);
+                            gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + i * 0.15 + 0.4);
+                            osc.start(audioContext.currentTime + i * 0.15);
+                            osc.stop(audioContext.currentTime + i * 0.15 + 0.4);
+                        });
+                    }
+                } catch (e) {}
+            };
+
+            const triggerConfetti = () => {
+                const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#fd79a8', '#a29bfe', '#fab1a0'];
+                const newConfetti = [];
+                for (let i = 0; i < 150; i++) {
+                    newConfetti.push({
+                        id: i,
+                        left: Math.random() * 100,
+                        color: colors[Math.floor(Math.random() * colors.length)],
+                        delay: Math.random() * 2,
+                        size: Math.random() * 10 + 5,
+                    });
+                }
+                setConfetti(newConfetti);
+                setTimeout(() => setConfetti([]), 4000);
+            };
+
+            const getStars = () => {
+                const baseTime = gridSize * gridSize * 8;
+                const baseMoves = gridSize * gridSize * 1.3;
+                
+                if (timeElapsed < baseTime && moves < baseMoves) return 3;
+                if (timeElapsed < baseTime * 1.5 || moves < baseMoves * 1.5) return 2;
+                return 1;
+            };
+
+            const getPieceStyle = (piece, width, height) => {
+                const totalWidth = width * gridSize;
+                const totalHeight = height * gridSize;
+                
+                if (selectedBuilding.imageUrl && imageLoaded[selectedBuilding.id]) {
+                    return {
+                        backgroundImage: `url(${selectedBuilding.imageUrl})`,
+                        backgroundSize: `${totalWidth}px ${totalHeight}px`,
+                        backgroundPosition: `-${piece.col * width}px -${piece.row * height}px`,
+                        backgroundRepeat: 'no-repeat',
+                    };
+                } else {
+                    const hue = (piece.row * 30 + piece.col * 45) % 360;
+                    return {
+                        background: `linear-gradient(135deg, 
+                            hsl(${hue}, 60%, 45%) 0%, 
+                            hsl(${hue + 30}, 60%, 35%) 100%)`,
+                    };
+                }
+            };
+
+            // Building Selection Screen
+            if (gameState === 'select') {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-indigo-900 p-4 md:p-6">
+                        <div className="max-w-5xl mx-auto">
+                            {/* Header */}
+                            <div className="text-center mb-8 md:mb-12">
+                                <div className="inline-block bg-green-500 text-white px-4 py-1 rounded-full text-sm font-semibold mb-4">
+                                    📍 KIOSK 2
+                                </div>
+                                <div className="text-5xl md:text-6xl mb-4">🧩</div>
+                                <h1 className="text-3xl md:text-5xl font-bold text-white mb-3">Rebuilding NP</h1>
+                                <p className="text-lg md:text-xl text-purple-200">Piece together historic NP buildings!</p>
+                                
+                                {currentUser && (
+                                    <div className="mt-4 inline-block bg-white/10 px-6 py-3 rounded-xl">
+                                        <span className="text-white">
+                                            👋 Welcome, <strong>{currentUser.fullName.split(' ')[0]}</strong>!
+                                        </span>
+                                        {alreadyPlayed ? (
+                                            <span className="block text-orange-300 text-sm mt-1">
+                                                ⚠️ You've completed this game. Play for fun!
+                                            </span>
+                                        ) : (
+                                            <span className="block text-green-300 text-sm mt-1">
+                                                ✨ Earn up to 61 points!
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Building Cards */}
+                            <div className="grid md:grid-cols-3 gap-4 md:gap-6 mb-8 md:mb-12">
+                                {buildings.map(building => (
+                                    <div 
+                                        key={building.id}
+                                        onClick={() => startGame(building)}
+                                        className="group cursor-pointer"
+                                    >
+                                        <div className="bg-white/10 backdrop-blur-xl rounded-2xl md:rounded-3xl overflow-hidden border border-white/20 hover:border-white/50 transition-all hover:scale-105 hover:shadow-2xl hover:shadow-purple-500/20">
+                                            <div className="h-40 md:h-48 relative overflow-hidden">
+                                                {building.imageUrl ? (
+                                                    <img 
+                                                        src={building.imageUrl} 
+                                                        alt={building.name}
+                                                        className="w-full h-full object-cover transition-transform group-hover:scale-110"
+                                                        crossOrigin="anonymous"
+                                                        onError={(e) => {
+                                                            e.target.style.display = 'none';
+                                                            e.target.nextSibling.style.display = 'flex';
+                                                        }}
+                                                    />
+                                                ) : null}
+                                                <div 
+                                                    className={`w-full h-full bg-gradient-to-br ${building.fallbackGradient} ${building.imageUrl ? 'hidden' : 'flex'} items-center justify-center`}
+                                                >
+                                                    <span className="text-6xl opacity-50">🏛️</span>
+                                                </div>
+                                                
+                                                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-black/40">
+                                                    <div className={`w-full h-full grid`} style={{
+                                                        gridTemplateColumns: `repeat(${building.gridSize}, 1fr)`,
+                                                        gridTemplateRows: `repeat(${building.gridSize}, 1fr)`,
+                                                    }}>
+                                                        {[...Array(building.gridSize * building.gridSize)].map((_, i) => (
+                                                            <div key={i} className="border border-white/50" />
+                                                        ))}
+                                                    </div>
+                                                    <div className="absolute inset-0 flex items-center justify-center">
+                                                        <span className="bg-white/90 text-purple-900 px-4 py-2 rounded-full font-bold text-sm">
+                                                            Click to Play!
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="absolute top-2 right-2 bg-black/70 px-3 py-1 rounded-full text-white text-xs md:text-sm font-medium backdrop-blur-sm">
+                                                    📅 {building.era}
+                                                </div>
+                                                
+                                                <div className="absolute bottom-2 left-2 bg-black/70 px-2 py-1 rounded-full text-white text-xs md:text-sm backdrop-blur-sm">
+                                                    🧩 {building.gridSize}×{building.gridSize}
+                                                </div>
+
+                                                {/* Points badge */}
+                                                <div className="absolute bottom-2 right-2 bg-yellow-500 px-2 py-1 rounded-full text-black text-xs font-bold">
+                                                    +{POINTS_CONFIG[building.difficultyKey].base}-{POINTS_CONFIG[building.difficultyKey].base + POINTS_CONFIG[building.difficultyKey].perStar * 3} pts
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="p-4 md:p-5">
+                                                <h3 className="text-lg md:text-xl font-bold text-white mb-2">{building.name}</h3>
+                                                <p className="text-purple-200 text-xs md:text-sm mb-3 line-clamp-2">{building.description}</p>
+                                                
+                                                <div className="flex justify-between items-center">
+                                                    <span className={`px-2 md:px-3 py-1 rounded-full text-xs md:text-sm font-semibold ${
+                                                        building.difficulty === 'Easy' ? 'bg-green-500/30 text-green-300 border border-green-500/30' :
+                                                        building.difficulty === 'Medium' ? 'bg-yellow-500/30 text-yellow-300 border border-yellow-500/30' :
+                                                        'bg-red-500/30 text-red-300 border border-red-500/30'
+                                                    }`}>
+                                                        {building.difficulty === 'Easy' ? '⭐' : building.difficulty === 'Medium' ? '⭐⭐' : '⭐⭐⭐'} {building.difficulty}
+                                                    </span>
+                                                    <span className="text-purple-300 text-xs md:text-sm">
+                                                        {building.gridSize * building.gridSize} pieces
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* How to Play */}
+                            <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 md:p-6 border border-white/20">
+                                <h3 className="text-xl md:text-2xl font-bold text-white mb-4 md:mb-6 text-center">🎮 How to Play</h3>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+                                    {[
+                                        { icon: "1️⃣", text: "Choose a building" },
+                                        { icon: "2️⃣", text: "Drag puzzle pieces" },
+                                        { icon: "3️⃣", text: "Match numbers to slots" },
+                                        { icon: "4️⃣", text: "Complete & earn points!" },
+                                    ].map((step, i) => (
+                                        <div key={i} className="text-center">
+                                            <div className="w-12 h-12 md:w-16 md:h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl md:rounded-2xl flex items-center justify-center mx-auto mb-2 md:mb-3 text-2xl md:text-3xl shadow-lg">
+                                                {step.icon}
+                                            </div>
+                                            <p className="text-purple-200 text-xs md:text-sm">{step.text}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Navigation */}
+                            <div className="mt-6 flex justify-center gap-4">
+                                <a 
+                                    href="kiosk.html"
+                                    className="bg-white/10 text-white px-6 py-3 rounded-xl hover:bg-white/20 transition-all"
+                                >
+                                    ← Kiosk 1
+                                </a>
+                                <a 
+                                    href="dashboard.html"
+                                    className="bg-white/10 text-white px-6 py-3 rounded-xl hover:bg-white/20 transition-all"
+                                >
+                                    📊 Dashboard
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Completed Screen
+            if (gameState === 'completed') {
+                const stars = getStars();
+                const config = POINTS_CONFIG[selectedBuilding.difficultyKey];
+                const totalPoints = config.base + (stars * config.perStar);
+                
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-indigo-900 flex items-center justify-center p-4 relative overflow-hidden">
+                        {confetti.map(c => (
+                            <div
+                                key={c.id}
+                                className="confetti"
+                                style={{
+                                    left: `${c.left}%`,
+                                    backgroundColor: c.color,
+                                    width: c.size,
+                                    height: c.size,
+                                    animationDelay: `${c.delay}s`,
+                                    borderRadius: Math.random() > 0.5 ? '50%' : '0',
+                                }}
+                            />
+                        ))}
+                        
+                        <div className="max-w-2xl w-full bg-white/10 backdrop-blur-xl rounded-2xl md:rounded-3xl p-6 md:p-8 border border-white/20 text-center relative z-10">
+                            <div className="text-6xl md:text-7xl mb-4 celebrate">🎉</div>
+                            <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">Puzzle Complete!</h1>
+                            <h2 className="text-xl md:text-2xl text-purple-300 mb-1">{selectedBuilding.name}</h2>
+                            <p className="text-purple-400 text-sm mb-4">📅 {selectedBuilding.era}</p>
+                            
+                            {/* Stars */}
+                            <div className="text-4xl md:text-5xl mb-4 md:mb-6">
+                                {[1, 2, 3].map(i => (
+                                    <span key={i} className={`inline-block ${i <= stars ? 'animate-pulse' : 'opacity-30'}`} style={{ animationDelay: `${i * 0.2}s` }}>⭐</span>
+                                ))}
+                            </div>
+                            
+                            {/* Stats */}
+                            <div className="grid grid-cols-2 gap-3 md:gap-4 mb-6">
+                                <div className="bg-white/10 rounded-xl p-3 md:p-4 border border-white/10">
+                                    <div className="text-2xl md:text-3xl font-bold text-green-400">{formatTime(timeElapsed)}</div>
+                                    <div className="text-purple-200 text-sm">⏱️ Time</div>
+                                </div>
+                                <div className="bg-white/10 rounded-xl p-3 md:p-4 border border-white/10">
+                                    <div className="text-2xl md:text-3xl font-bold text-blue-400">{moves}</div>
+                                    <div className="text-purple-200 text-sm">🎯 Moves</div>
+                                </div>
+                            </div>
+
+                            {/* Points Earned */}
+                            {currentUser && (
+                                <div className={`rounded-xl p-6 mb-6 ${
+                                    alreadyPlayed 
+                                        ? 'bg-orange-500/20 border-2 border-orange-500/50' 
+                                        : 'bg-green-500/20 border-2 border-green-500/50'
+                                }`}>
+                                    {alreadyPlayed ? (
+                                        <div className="text-orange-200">
+                                            <p className="text-lg">⚠️ Game already completed</p>
+                                            <p className="text-sm mt-1">Points only awarded once per game</p>
+                                        </div>
+                                    ) : (
+                                        <div className="text-green-200">
+                                            <p className="text-4xl font-bold mb-2">+{totalPoints} Points!</p>
+                                            <p className="text-sm">
+                                                {selectedBuilding.difficulty} difficulty ({config.base} base + {stars * config.perStar} bonus)
+                                            </p>
+                                            <p className="text-lg mt-3">
+                                                Total: <strong>{currentUser.points} points</strong>
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Card Upgrade Notification */}
+                            {pointsAwarded && currentUser && currentUser.cardVersion > 1 && (
+                                <div className="bg-yellow-500/20 border-2 border-yellow-400 rounded-xl p-4 mb-6">
+                                    <p className="text-yellow-200 text-lg font-bold">
+                                        🎉 Card Upgraded to Version {currentUser.cardVersion}!
+                                    </p>
+                                </div>
+                            )}
+                            
+                            {/* Historical Facts */}
+                            <div className="bg-gradient-to-r from-amber-900/40 to-orange-900/40 rounded-xl p-4 md:p-5 mb-6 text-left border border-amber-500/30">
+                                <h3 className="text-base md:text-lg font-bold text-amber-300 mb-3 flex items-center gap-2">
+                                    📜 Did You Know?
+                                </h3>
+                                <ul className="space-y-2">
+                                    {selectedBuilding.facts.map((fact, i) => (
+                                        <li key={i} className="text-amber-100 text-sm flex items-start gap-2">
+                                            <span className="text-amber-400 mt-1">•</span>
+                                            <span>{fact}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="flex gap-3 md:gap-4 mb-4">
+                                <button
+                                    onClick={() => startGame(selectedBuilding)}
+                                    className="flex-1 bg-gradient-to-r from-blue-500 to-cyan-500 text-white py-3 md:py-4 rounded-xl font-bold hover:from-blue-600 hover:to-cyan-600 transition-all flex items-center justify-center gap-2 text-sm md:text-base shadow-lg"
+                                >
+                                    <RotateCwIcon />
+                                    Play Again
+                                </button>
+                                <button
+                                    onClick={() => setGameState('select')}
+                                    className="flex-1 bg-white/10 text-white py-3 md:py-4 rounded-xl font-bold hover:bg-white/20 transition-all border border-white/20 text-sm md:text-base"
+                                >
+                                    🏛️ Other Buildings
+                                </button>
+                            </div>
+
+                            {/* Navigation */}
+                            <div className="flex gap-3">
+                                <a
+                                    href="kiosk2.html"
+                                    className="flex-1 bg-gray-600 text-white py-3 rounded-xl font-semibold hover:bg-gray-700 transition-all text-center"
+                                >
+                                    ← Back to Kiosk
+                                </a>
+                                <a
+                                    href="dashboard.html"
+                                    className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 text-white py-3 rounded-xl font-semibold hover:from-green-600 hover:to-emerald-600 transition-all text-center"
+                                >
+                                    View Dashboard →
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Playing Screen
+            const pieceSize = window.innerWidth < 640 ? 55 : 75;
+            
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-indigo-900 p-3 md:p-4">
+                    <div className="max-w-6xl mx-auto">
+                        {/* Header */}
+                        <div className="bg-white/10 backdrop-blur-sm rounded-xl md:rounded-2xl p-3 md:p-4 mb-4 md:mb-6 border border-white/20">
+                            <div className="flex flex-wrap justify-between items-center gap-2 md:gap-4">
+                                <button
+                                    onClick={() => setGameState('select')}
+                                    className="text-white hover:text-purple-200 transition-all flex items-center gap-1 md:gap-2 text-sm md:text-base"
+                                >
+                                    <ArrowLeftIcon />
+                                    <span className="hidden sm:inline">Back</span>
+                                </button>
+                                
+                                <div className="text-center flex-1">
+                                    <h2 className="text-base md:text-xl font-bold text-white truncate">{selectedBuilding.name}</h2>
+                                    <p className="text-purple-300 text-xs md:text-sm">📅 {selectedBuilding.era}</p>
+                                </div>
+                                
+                                <div className="flex items-center gap-2 md:gap-4 text-white text-xs md:text-base">
+                                    <div className="bg-white/10 px-2 py-1 rounded-lg">⏱️ {formatTime(timeElapsed)}</div>
+                                    <div className="bg-white/10 px-2 py-1 rounded-lg">🎯 {moves}</div>
+                                    <div className="bg-green-500/20 text-green-300 px-2 py-1 rounded-lg">
+                                        {Object.keys(placedPieces).length}/{gridSize * gridSize}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="mt-3 md:mt-4 h-2 md:h-3 bg-white/20 rounded-full overflow-hidden">
+                                <div 
+                                    className="h-full bg-gradient-to-r from-green-400 to-emerald-500 transition-all duration-500 ease-out"
+                                    style={{ width: `${(Object.keys(placedPieces).length / (gridSize * gridSize)) * 100}%` }}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid lg:grid-cols-2 gap-4 md:gap-8">
+                            {/* Puzzle Grid */}
+                            <div className="bg-white/10 backdrop-blur-sm rounded-2xl md:rounded-3xl p-4 md:p-6 border border-white/20">
+                                <div className="flex justify-between items-center mb-3 md:mb-4">
+                                    <h3 className="text-lg md:text-xl font-bold text-white">🏗️ Build Here</h3>
+                                    <button
+                                        onClick={() => setShowPreview(!showPreview)}
+                                        className={`px-3 py-1.5 md:px-4 md:py-2 rounded-lg flex items-center gap-1 md:gap-2 transition-all text-xs md:text-sm ${
+                                            showPreview 
+                                                ? 'bg-purple-500 text-white shadow-lg' 
+                                                : 'bg-white/10 text-purple-300 hover:bg-white/20'
+                                        }`}
+                                    >
+                                        <EyeIcon />
+                                        {showPreview ? 'Hide' : 'Preview'}
+                                    </button>
+                                </div>
+                                
+                                {showPreview && (
+                                    <div className="mb-4 rounded-lg overflow-hidden border-2 border-purple-400/50 mx-auto shadow-lg" style={{ maxWidth: '160px' }}>
+                                        {selectedBuilding.imageUrl && imageLoaded[selectedBuilding.id] ? (
+                                            <img 
+                                                src={selectedBuilding.imageUrl} 
+                                                alt="Reference"
+                                                className="w-full h-auto"
+                                                crossOrigin="anonymous"
+                                            />
+                                        ) : (
+                                            <div className={`h-24 bg-gradient-to-br ${selectedBuilding.fallbackGradient} flex items-center justify-center`}>
+                                                <span className="text-3xl">🏛️</span>
+                                            </div>
+                                        )}
+                                        <div className="bg-purple-500 text-white text-xs text-center py-1 font-medium">
+                                            👆 Reference Image
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                <div 
+                                    className="grid gap-0.5 md:gap-1 mx-auto rounded-xl overflow-hidden border-4 border-white/30 p-0.5 md:p-1 bg-black/60 shadow-2xl"
+                                    style={{
+                                        gridTemplateColumns: `repeat(${gridSize}, ${pieceSize}px)`,
+                                        gridTemplateRows: `repeat(${gridSize}, ${pieceSize}px)`,
+                                        width: 'fit-content',
+                                    }}
+                                >
+                                    {[...Array(gridSize * gridSize)].map((_, slotIndex) => {
+                                        const placedPiece = placedPieces[slotIndex];
+                                        const isHighlighted = highlightedSlot === slotIndex;
+                                        const isWrong = wrongSlot === slotIndex;
+                                        const isCorrect = correctSlot === slotIndex;
+                                        
+                                        return (
+                                            <div
+                                                key={slotIndex}
+                                                data-slot={slotIndex}
+                                                className={`puzzle-slot relative overflow-hidden rounded-sm ${
+                                                    isHighlighted ? 'highlight' : ''
+                                                } ${isWrong ? 'wrong' : ''} ${isCorrect ? 'correct' : ''}`}
+                                                style={{
+                                                    width: pieceSize,
+                                                    height: pieceSize,
+                                                    backgroundColor: placedPiece ? 'transparent' : 'rgba(255,255,255,0.08)',
+                                                }}
+                                                onDragOver={(e) => {
+                                                    e.preventDefault();
+                                                    handleDragOver(slotIndex);
+                                                }}
+                                                onDragLeave={() => setHighlightedSlot(null)}
+                                                onDrop={(e) => {
+                                                    e.preventDefault();
+                                                    handleDrop(slotIndex);
+                                                }}
+                                            >
+                                                {placedPiece ? (
+                                                    <div 
+                                                        className="w-full h-full image-piece"
+                                                        style={getPieceStyle(placedPiece, pieceSize, pieceSize)}
+                                                    />
+                                                ) : (
+                                                    <div className="w-full h-full flex items-center justify-center">
+                                                        <span className="text-white/25 text-xs font-mono">{slotIndex + 1}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                
+                                <p className="text-center text-purple-300 text-xs md:text-sm mt-3 md:mt-4">
+                                    🎯 Drag pieces here • Match numbers to complete
+                                </p>
+                            </div>
+
+                            {/* Pieces Pile */}
+                            <div className="bg-white/10 backdrop-blur-sm rounded-2xl md:rounded-3xl p-4 md:p-6 border border-white/20">
+                                <h3 className="text-lg md:text-xl font-bold text-white mb-2 md:mb-4">🧩 Puzzle Pieces</h3>
+                                <p className="text-purple-300 text-xs md:text-sm mb-3 md:mb-4">
+                                    Drag pieces to their matching numbered slots
+                                </p>
+                                
+                                <div 
+                                    className="grid gap-2 md:gap-3 max-h-[280px] md:max-h-[380px] overflow-y-auto p-2 bg-black/20 rounded-xl"
+                                    style={{
+                                        gridTemplateColumns: `repeat(auto-fill, minmax(${pieceSize + 8}px, 1fr))`,
+                                    }}
+                                >
+                                    {pieces.map(piece => (
+                                        <div
+                                            key={piece.id}
+                                            draggable
+                                            onDragStart={() => handleDragStart(piece)}
+                                            onDragEnd={handleDragEnd}
+                                            onTouchStart={(e) => handleTouchStart(piece, e)}
+                                            onTouchEnd={handleTouchEnd}
+                                            className={`puzzle-piece rounded-lg overflow-hidden border-2 border-white/30 hover:border-white/70 hover:shadow-lg relative transition-all ${
+                                                draggedPiece?.id === piece.id ? 'dragging' : ''
+                                            }`}
+                                            style={{
+                                                width: pieceSize,
+                                                height: pieceSize,
+                                            }}
+                                        >
+                                            <div 
+                                                className="w-full h-full image-piece"
+                                                style={getPieceStyle(piece, pieceSize, pieceSize)}
+                                            />
+                                            <div className="absolute top-0.5 left-0.5 w-5 h-5 md:w-6 md:h-6 bg-black/80 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-md">
+                                                {piece.correctPosition + 1}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                
+                                {pieces.length === 0 && (
+                                    <div className="text-center py-8 md:py-12 bg-green-500/10 rounded-xl border border-green-500/30">
+                                        <div className="text-4xl md:text-5xl mb-4">✅</div>
+                                        <p className="text-green-400 font-bold text-base md:text-lg">All pieces placed!</p>
+                                        <p className="text-green-300 text-sm mt-1">Great job! 🎉</p>
+                                    </div>
+                                )}
+                                
+                                <div className="mt-4 md:mt-6 bg-yellow-500/20 rounded-xl p-3 md:p-4 border border-yellow-500/30">
+                                    <p className="text-yellow-200 text-xs md:text-sm">
+                                        💡 <strong>Tip:</strong> The number on each piece matches its slot number. Use Preview to see the complete image!
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<RebuildingNP />);
+    </script>
+</body>
+</html>

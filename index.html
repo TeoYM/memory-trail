@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory Trail - Registration</title>
+    <!-- QR Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        /* CSS STYLES */
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .container { width: 100%; max-width: 400px; }
+        .card { background: white; padding: 2rem; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; text-align: center; margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], input[type="email"] { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+        
+        .btn { width: 100%; padding: 12px; border: none; border-radius: 5px; cursor: pointer; font-size: 1rem; font-weight: bold; margin-top: 10px; background-color: #3498db; color: white; transition: 0.3s; }
+        .btn:hover { background-color: #2980b9; }
+        .btn-secondary { background-color: #95a5a6; margin-bottom: 5px; }
+        .btn-secondary:hover { background-color: #7f8c8d; }
+        
+        .login-link, .back-link { text-align: center; margin-top: 15px; font-size: 0.9rem; }
+        .login-link a, .back-link a { color: #3498db; text-decoration: none; }
+
+        /* Modal Styles */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
+        .modal.active { display: flex; } /* Logic uses this class to show modal */
+        .modal-content { background: white; padding: 2rem; border-radius: 10px; width: 90%; max-width: 400px; text-align: center; max-height: 90vh; overflow-y: auto; }
+
+        /* --- CARD V1 STYLING --- */
+        .student-card {
+            background-color: #667eea; /* Fallback color */
+            border-radius: 10px;
+            width: 100%;
+            height: 200px;
+            margin-top: 20px;
+            position: relative;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            text-align: left;
+            overflow: hidden;
+        }
+
+        /* This applies your image */
+        .card-v1 {
+            background-image: url('images/card-v1.png');
+            background-size: cover;
+            background-position: center;
+        }
+
+        .card-content {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: white;
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
+            z-index: 2;
+        }
+        .card-label { font-size: 0.7rem; letter-spacing: 2px; text-transform: uppercase; display: block; opacity: 0.9; }
+        .card-name { font-size: 1.2rem; font-weight: bold; display: block; margin: 5px 0; }
+        .card-id { font-family: monospace; letter-spacing: 1px; }
+        
+        /* QR Code Container Styling */
+        #qrcode { display: flex; justify-content: center; margin: 20px 0; }
+        #qrcode img { border: 5px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎓 Memory Trail</h1>
+
+        <!-- Registration Form -->
+        <div class="card registration-card" id="registrationSection">
+            <h2>Student Registration</h2>
+            <form id="registrationForm">
+                <div class="form-group">
+                    <label for="fullName">Full Name *</label>
+                    <input type="text" id="fullName" required placeholder="Enter your full name">
+                </div>
+                <div class="form-group">
+                    <label for="email">Student Email *</label>
+                    <input type="email" id="email" required placeholder="yourname@mymail.nyp.edu.sg">
+                </div>
+                <button type="submit" class="btn" id="registerBtn">Create My Account</button>
+            </form>
+            <div class="login-link"><p>Already registered? <a href="#" id="showLoginBtn">Enter Trail ID</a></p></div>
+        </div>
+
+        <!-- Login Section -->
+        <div class="card login-card" id="loginSection" style="display: none;">
+            <h2>Already Registered?</h2>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="loginId">Enter your Trail ID</label>
+                    <input type="text" id="loginId" placeholder="e.g., MT-ABC123">
+                </div>
+                <button type="submit" class="btn">Access My Account</button>
+            </form>
+            <p class="back-link"><a href="#" id="showRegisterBtn">← Back to Registration</a></p>
+        </div>
+
+        <!-- Success Modal -->
+        <div class="modal" id="successModal">
+            <div class="modal-content">
+                <h2>🎉 Registration Successful!</h2>
+                <div class="user-info">
+                    <p>Welcome, <strong id="displayName">User</strong>!</p>
+                    <p>Trail ID: <strong id="displayTrailId"></strong></p>
+                </div>
+                
+                <!-- Card Preview -->
+                <div class="student-card" id="studentCardPreview">
+                    <div class="card-content">
+                        <span class="card-label">STUDENT CARD</span>
+                        <span class="card-name" id="cardName"></span>
+                        <span class="card-id" id="cardId"></span>
+                    </div>
+                </div>
+
+                <!-- QR Code -->
+                <div id="qrcode"></div>
+                <p style="font-size:0.9rem; color:#666;">Scan this to participate!</p>
+
+                <!-- Buttons -->
+                 <div style="margin-top:20px;">
+                    <button class="btn btn-secondary" id="downloadQR">Download QR Code</button>
+                    <button class="btn" id="goToDashboard">Go to Dashboard</button>
+                 </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            new MemoryTrailRegistration();
+        });
+
+        class MemoryTrailRegistration {
+            constructor() {
+                this.initElements();
+                this.initEventListeners();
+            }
+
+            initElements() {
+                this.registrationForm = document.getElementById('registrationForm');
+                this.loginForm = document.getElementById('loginForm');
+                this.registrationSection = document.getElementById('registrationSection');
+                this.loginSection = document.getElementById('loginSection');
+                this.successModal = document.getElementById('successModal');
+                this.showLoginBtn = document.getElementById('showLoginBtn');
+                this.showRegisterBtn = document.getElementById('showRegisterBtn');
+                
+                // Button Elements
+                this.goToDashboardBtn = document.getElementById('goToDashboard');
+                this.downloadQRBtn = document.getElementById('downloadQR'); // Added back
+                
+                this.qrcodeContainer = document.getElementById('qrcode');
+                
+                // Display Elements
+                this.displayName = document.getElementById('displayName');
+                this.displayTrailId = document.getElementById('displayTrailId');
+                this.cardName = document.getElementById('cardName');
+                this.cardId = document.getElementById('cardId');
+                this.studentCard = document.getElementById('studentCardPreview');
+            }
+
+            initEventListeners() {
+                this.registrationForm.addEventListener('submit', (e) => this.handleRegistration(e));
+                this.loginForm.addEventListener('submit', (e) => this.handleLogin(e));
+                this.showLoginBtn.addEventListener('click', (e) => { e.preventDefault(); this.toggleForms('login'); });
+                this.showRegisterBtn.addEventListener('click', (e) => { e.preventDefault(); this.toggleForms('register'); });
+                this.goToDashboardBtn.addEventListener('click', () => { window.location.href = 'dashboard.html'; });
+                
+                // Added Download Listener
+                this.downloadQRBtn.addEventListener('click', () => this.downloadQRCode());
+            }
+
+            handleRegistration(e) {
+                e.preventDefault();
+                const fullName = document.getElementById('fullName').value.trim();
+                const email = document.getElementById('email').value.trim().toLowerCase();
+
+                if (!fullName) return alert("Please enter name");
+
+                // Generate User Data
+                const trailId = "MT-" + Math.floor(100000 + Math.random() * 900000);
+                const user = {
+                    fullName: fullName,
+                    email: email,
+                    trailId: trailId,
+                    username: fullName.split(' ')[0] + Math.floor(Math.random()*100),
+                    cardVersion: 1,
+                    points: 0,
+                    completedGames: [],
+                    registeredAt: new Date().toISOString()
+                };
+
+                // Save to LocalStorage
+                this.saveUser(user);
+                localStorage.setItem('currentUser', JSON.stringify(user));
+
+                // Show Success
+                this.showSuccessModal(user);
+            }
+
+            handleLogin(e) {
+                e.preventDefault();
+                const loginId = document.getElementById('loginId').value.trim();
+                const users = this.getAllUsers();
+                const user = users.find(u => u.trailId === loginId);
+                
+                if (user) {
+                    localStorage.setItem('currentUser', JSON.stringify(user));
+                    window.location.href = 'dashboard.html';
+                } else {
+                    alert('Trail ID not found.');
+                }
+            }
+
+            getAllUsers() {
+                const users = localStorage.getItem('memoryTrailUsers');
+                return users ? JSON.parse(users) : [];
+            }
+
+            saveUser(user) {
+                const users = this.getAllUsers();
+                users.push(user);
+                localStorage.setItem('memoryTrailUsers', JSON.stringify(users));
+            }
+
+            toggleForms(show) {
+                this.registrationSection.style.display = show === 'login' ? 'none' : 'block';
+                this.loginSection.style.display = show === 'login' ? 'block' : 'none';
+            }
+
+            showSuccessModal(user) {
+                // 1. Fill in Text
+                this.displayName.textContent = user.fullName;
+                this.displayTrailId.textContent = user.trailId;
+                this.cardName.textContent = user.fullName;
+                this.cardId.textContent = user.trailId;
+
+                // 2. Apply V1 Image Class
+                this.studentCard.classList.add('card-v1');
+
+                // 3. SHOW THE MODAL FIRST (The Fix)
+                this.successModal.classList.add('active');
+
+                // 4. Generate QR Code with small delay to ensure modal is rendered
+                this.qrcodeContainer.innerHTML = '';
+                setTimeout(() => {
+                    new QRCode(this.qrcodeContainer, {
+                        text: JSON.stringify({ 
+                            trailId: user.trailId, 
+                            username: user.username,
+                            type: 'memory-trail-user'
+                        }),
+                        width: 150,
+                        height: 150,
+                        colorDark: '#1f2937',
+                        colorLight: '#ffffff',
+                        correctLevel: QRCode.CorrectLevel.H
+                    });
+                }, 50);
+            }
+
+            downloadQRCode() {
+                // Get the image element created by QRCode.js
+                const img = this.qrcodeContainer.querySelector('img');
+                
+                if (img) {
+                    const link = document.createElement('a');
+                    link.download = 'MemoryTrail-QR-' + this.displayTrailId.textContent + '.png';
+                    link.href = img.src;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                } else {
+                    alert("QR Code not generated yet!");
+                }
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,1241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kiosk 3 - NP Wish Wall | Memory Trail</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        /* User Banner Styles */
+        .user-banner {
+            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+            color: white;
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-family: 'Segoe UI', sans-serif;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        .user-banner .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .user-banner .trail-id {
+            background: rgba(255,255,255,0.2);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+        .user-banner .points {
+            background: #fbbf24;
+            color: #000;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+        }
+        .user-banner .kiosk-badge {
+            background: rgba(255,255,255,0.2);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            margin-left: 10px;
+        }
+        
+        /* No User Overlay */
+        .no-user-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            color: white;
+            text-align: center;
+            font-family: 'Segoe UI', sans-serif;
+        }
+        .no-user-overlay .content {
+            max-width: 400px;
+            padding: 40px;
+        }
+        .no-user-overlay h2 {
+            font-size: 28px;
+            margin-bottom: 15px;
+        }
+        .no-user-overlay p {
+            font-size: 18px;
+            margin-bottom: 25px;
+            opacity: 0.9;
+        }
+        .no-user-overlay a {
+            display: inline-block;
+            background: #8b5cf6;
+            color: white;
+            padding: 15px 30px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        @keyframes recording {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+        }
+        @keyframes celebrate {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+        .animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        .fade-in { animation: fadeIn 0.5s ease-out forwards; }
+        .recording-pulse { animation: recording 1s ease-in-out infinite; }
+        .celebrate { animation: celebrate 0.5s ease-in-out; }
+        
+        /* Add padding for fixed banner */
+        .main-content {
+            padding-top: 60px;
+        }
+    </style>
+</head>
+<body>
+    <!-- User Banner -->
+    <div class="user-banner" id="userBanner" style="display: none;">
+        <div class="user-info">
+            <span>✨ <strong id="playerName">Student</strong></span>
+            <span class="trail-id" id="playerTrailId">MT-XXXXXX</span>
+            <span class="kiosk-badge">📍 Kiosk 3</span>
+        </div>
+        <div class="points" id="playerPoints">0 pts</div>
+    </div>
+
+    <!-- No User Overlay -->
+    <div class="no-user-overlay" id="noUserOverlay" style="display: none;">
+        <div class="content">
+            <h2>⚠️ No Player Detected</h2>
+            <p>Please scan your QR code at the kiosk first to participate.</p>
+            <a href="kiosk3.html">Go to Kiosk 3 Scanner</a>
+        </div>
+    </div>
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // ===== MEMORY TRAIL INTEGRATION =====
+        const MemoryTrailIntegration = {
+            getCurrentUser: function() {
+                const kioskUser = sessionStorage.getItem('kioskUser');
+                if (kioskUser) return JSON.parse(kioskUser);
+                const currentUser = localStorage.getItem('currentUser');
+                if (currentUser) return JSON.parse(currentUser);
+                return null;
+            },
+            
+            awardPoints: function(points, gameId) {
+                const user = this.getCurrentUser();
+                if (!user) return false;
+                
+                if (user.completedGames && user.completedGames.includes(gameId)) {
+                    return { success: false, alreadyCompleted: true };
+                }
+                
+                user.points = (user.points || 0) + points;
+                if (!user.completedGames) user.completedGames = [];
+                user.completedGames.push(gameId);
+                
+                const totalActivities = 4;
+                user.cardVersion = Math.min(1 + user.completedGames.length, totalActivities);
+                
+                this.saveUser(user);
+                return { success: true, newPoints: user.points, cardVersion: user.cardVersion };
+            },
+            
+            saveUser: function(user) {
+                localStorage.setItem('currentUser', JSON.stringify(user));
+                const users = JSON.parse(localStorage.getItem('memoryTrailUsers') || '[]');
+                const index = users.findIndex(u => u.trailId === user.trailId);
+                if (index !== -1) {
+                    users[index] = user;
+                    localStorage.setItem('memoryTrailUsers', JSON.stringify(users));
+                }
+                if (sessionStorage.getItem('kioskUser')) {
+                    sessionStorage.setItem('kioskUser', JSON.stringify(user));
+                }
+            },
+            
+            hasCompleted: function(gameId) {
+                const user = this.getCurrentUser();
+                if (!user) return false;
+                return user.completedGames && user.completedGames.includes(gameId);
+            }
+        };
+
+        // ===== SVG ICONS =====
+        const HeartIcon = ({ className, filled }) => (
+            <svg className={className} fill={filled ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+            </svg>
+        );
+
+        const ImageIcon = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <polyline points="21 15 16 10 5 21"/>
+            </svg>
+        );
+
+        const MicIcon = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="23"/>
+                <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+        );
+
+        const TypeIcon = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <polyline points="4 7 4 4 20 4 20 7"/>
+                <line x1="9" y1="20" x2="15" y2="20"/>
+                <line x1="12" y1="4" x2="12" y2="20"/>
+            </svg>
+        );
+
+        const VideoIcon = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <polygon points="23 7 16 12 23 17 23 7"/>
+                <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+            </svg>
+        );
+
+        const SparklesIcon = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/>
+                <path d="M5 19l1 3 1-3 3-1-3-1-1-3-1 3-3 1 3 1z"/>
+                <path d="M19 13l1 2 1-2 2-1-2-1-1-2-1 2-2 1 2 1z"/>
+            </svg>
+        );
+
+        const SendIcon = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <line x1="22" y1="2" x2="11" y2="13"/>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+        );
+
+        const XIcon = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+        );
+
+        const FilterIcon = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+            </svg>
+        );
+
+        const PlayIcon = ({ className }) => (
+            <svg className={className} fill="currentColor" viewBox="0 0 24 24">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+        );
+
+        const PauseIcon = ({ className }) => (
+            <svg className={className} fill="currentColor" viewBox="0 0 24 24">
+                <rect x="6" y="4" width="4" height="16"/>
+                <rect x="14" y="4" width="4" height="16"/>
+            </svg>
+        );
+
+        const StopIcon = ({ className }) => (
+            <svg className={className} fill="currentColor" viewBox="0 0 24 24">
+                <rect x="4" y="4" width="16" height="16" rx="2"/>
+            </svg>
+        );
+
+        const TrashIcon = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+        );
+
+        const ArrowLeftIcon = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12 19 5 12 12 5"/>
+            </svg>
+        );
+
+        const ArrowRightIcon = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <line x1="5" y1="12" x2="19" y2="12"/>
+                <polyline points="12 5 19 12 12 19"/>
+            </svg>
+        );
+
+        // ===== MAIN COMPONENT =====
+        const NPWishWall = () => {
+            const [view, setView] = useState('welcome');
+            const [wishes, setWishes] = useState([]);
+            const [newWish, setNewWish] = useState({
+                type: 'text',
+                content: '',
+                category: 'hope',
+                author: '',
+                mediaUrl: null,
+                mediaType: null
+            });
+            const [filter, setFilter] = useState('all');
+            const [showFilters, setShowFilters] = useState(false);
+            const [isRecording, setIsRecording] = useState(false);
+            const [recordingTime, setRecordingTime] = useState(0);
+            const [audioURL, setAudioURL] = useState(null);
+            const [imagePreview, setImagePreview] = useState(null);
+            const [videoPreview, setVideoPreview] = useState(null);
+            
+            // Memory Trail State
+            const [currentUser, setCurrentUser] = useState(null);
+            const [alreadyCompleted, setAlreadyCompleted] = useState(false);
+            const [showSuccess, setShowSuccess] = useState(false);
+            const [cardUpgraded, setCardUpgraded] = useState(false);
+            const [newCardVersion, setNewCardVersion] = useState(0);
+            
+            const GAME_ID = 'kiosk3-wish-wall';
+            const POINTS = 10;
+            
+            const mediaRecorderRef = useRef(null);
+            const audioChunksRef = useRef([]);
+            const timerRef = useRef(null);
+            const fileInputRef = useRef(null);
+            const videoInputRef = useRef(null);
+
+            // Sample wishes
+            const sampleWishes = [
+                { id: 1, type: 'text', content: 'I hope NP continues to innovate and inspire future generations!', category: 'hope', author: 'Alex T.', timestamp: Date.now() - 3600000, likes: 12, liked: false },
+                { id: 2, type: 'text', content: 'May NP always be a place where dreams take flight 🚀', category: 'dream', author: 'Sarah L.', timestamp: Date.now() - 7200000, likes: 8, liked: false },
+                { id: 3, type: 'text', content: 'Grateful for all the memories and friendships made here ❤️', category: 'memory', author: 'James W.', timestamp: Date.now() - 10800000, likes: 15, liked: false },
+                { id: 4, type: 'text', content: 'Wishing for more green spaces and sustainable initiatives on campus!', category: 'hope', author: 'Emma C.', timestamp: Date.now() - 14400000, likes: 6, liked: false },
+                { id: 5, type: 'text', content: 'I dream of NP becoming the leading polytechnic in Southeast Asia!', category: 'dream', author: 'Ryan K.', timestamp: Date.now() - 18000000, likes: 20, liked: false },
+                { id: 6, type: 'text', content: 'Thank you NP for shaping who I am today 🎓', category: 'memory', author: 'Michelle P.', timestamp: Date.now() - 21600000, likes: 25, liked: false },
+            ];
+
+            // Initialize - Check for user and load wishes
+            useEffect(() => {
+                const user = MemoryTrailIntegration.getCurrentUser();
+                if (user) {
+                    setCurrentUser(user);
+                    document.getElementById('userBanner').style.display = 'flex';
+                    document.getElementById('playerName').textContent = user.fullName.split(' ')[0];
+                    document.getElementById('playerTrailId').textContent = user.trailId;
+                    document.getElementById('playerPoints').textContent = user.points + ' pts';
+                    
+                    // Pre-fill author name
+                    setNewWish(prev => ({ ...prev, author: user.fullName.split(' ')[0] }));
+                    
+                    if (MemoryTrailIntegration.hasCompleted(GAME_ID)) {
+                        setAlreadyCompleted(true);
+                    }
+                } else {
+                    document.getElementById('noUserOverlay').style.display = 'flex';
+                }
+
+                // Load wishes
+                const saved = localStorage.getItem('npWishes');
+                if (saved) {
+                    try {
+                        setWishes(JSON.parse(saved));
+                    } catch {
+                        setWishes(sampleWishes);
+                    }
+                } else {
+                    setWishes(sampleWishes);
+                }
+            }, []);
+
+            // Save wishes to localStorage
+            useEffect(() => {
+                if (wishes.length > 0) {
+                    localStorage.setItem('npWishes', JSON.stringify(wishes));
+                }
+            }, [wishes]);
+
+            const categories = [
+                { id: 'hope', label: 'Hopes', color: 'from-blue-400 to-cyan-400', icon: '🌟' },
+                { id: 'dream', label: 'Dreams', color: 'from-purple-400 to-pink-400', icon: '✨' },
+                { id: 'memory', label: 'Memories', color: 'from-orange-400 to-red-400', icon: '❤️' },
+                { id: 'future', label: 'Future Vision', color: 'from-green-400 to-teal-400', icon: '🚀' }
+            ];
+
+            const submissionTypes = [
+                { id: 'text', label: 'Text', Icon: TypeIcon, description: 'Write your wish' },
+                { id: 'voice', label: 'Voice', Icon: MicIcon, description: 'Record a message' },
+                { id: 'image', label: 'Image', Icon: ImageIcon, description: 'Upload a photo' },
+                { id: 'video', label: 'Video', Icon: VideoIcon, description: 'Share a video' }
+            ];
+
+            // Voice Recording Functions
+            const startRecording = async () => {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorderRef.current = new MediaRecorder(stream);
+                    audioChunksRef.current = [];
+
+                    mediaRecorderRef.current.ondataavailable = (event) => {
+                        audioChunksRef.current.push(event.data);
+                    };
+
+                    mediaRecorderRef.current.onstop = () => {
+                        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+                        const url = URL.createObjectURL(audioBlob);
+                        setAudioURL(url);
+                        setNewWish(prev => ({ ...prev, mediaUrl: url, mediaType: 'audio' }));
+                        stream.getTracks().forEach(track => track.stop());
+                    };
+
+                    mediaRecorderRef.current.start();
+                    setIsRecording(true);
+                    setRecordingTime(0);
+                    
+                    timerRef.current = setInterval(() => {
+                        setRecordingTime(prev => prev + 1);
+                    }, 1000);
+                } catch (err) {
+                    alert('Could not access microphone. Please allow microphone access.');
+                    console.error('Error accessing microphone:', err);
+                }
+            };
+
+            const stopRecording = () => {
+                if (mediaRecorderRef.current && isRecording) {
+                    mediaRecorderRef.current.stop();
+                    setIsRecording(false);
+                    clearInterval(timerRef.current);
+                }
+            };
+
+            const deleteRecording = () => {
+                if (audioURL) URL.revokeObjectURL(audioURL);
+                setAudioURL(null);
+                setRecordingTime(0);
+                setNewWish(prev => ({ ...prev, mediaUrl: null, mediaType: null }));
+            };
+
+            // Image Upload Functions
+            const handleImageUpload = (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    if (file.size > 5 * 1024 * 1024) {
+                        alert('Image must be less than 5MB');
+                        return;
+                    }
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        setImagePreview(reader.result);
+                        setNewWish(prev => ({ ...prev, mediaUrl: reader.result, mediaType: 'image' }));
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            const deleteImage = () => {
+                setImagePreview(null);
+                setNewWish(prev => ({ ...prev, mediaUrl: null, mediaType: null }));
+                if (fileInputRef.current) fileInputRef.current.value = '';
+            };
+
+            // Video Upload Functions
+            const handleVideoUpload = (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    if (file.size > 50 * 1024 * 1024) {
+                        alert('Video must be less than 50MB');
+                        return;
+                    }
+                    const url = URL.createObjectURL(file);
+                    setVideoPreview(url);
+                    
+                    if (file.size < 10 * 1024 * 1024) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                            setNewWish(prev => ({ ...prev, mediaUrl: reader.result, mediaType: 'video' }));
+                        };
+                        reader.readAsDataURL(file);
+                    } else {
+                        setNewWish(prev => ({ ...prev, mediaUrl: url, mediaType: 'video' }));
+                    }
+                }
+            };
+
+            const deleteVideo = () => {
+                if (videoPreview) URL.revokeObjectURL(videoPreview);
+                setVideoPreview(null);
+                setNewWish(prev => ({ ...prev, mediaUrl: null, mediaType: null }));
+                if (videoInputRef.current) videoInputRef.current.value = '';
+            };
+
+            // Like Function
+            const toggleLike = (wishId) => {
+                setWishes(wishes.map(wish => {
+                    if (wish.id === wishId) {
+                        return {
+                            ...wish,
+                            liked: !wish.liked,
+                            likes: wish.liked ? wish.likes - 1 : wish.likes + 1
+                        };
+                    }
+                    return wish;
+                }));
+            };
+
+            // Submit Function with Memory Trail Integration
+            const handleSubmit = () => {
+                if (!newWish.author.trim()) {
+                    alert('Please enter your name');
+                    return;
+                }
+                
+                if (!newWish.content.trim() && !newWish.mediaUrl) {
+                    alert('Please add some content to your wish');
+                    return;
+                }
+
+                const wish = {
+                    id: Date.now(),
+                    type: newWish.type,
+                    content: newWish.content || `${newWish.type.charAt(0).toUpperCase() + newWish.type.slice(1)} wish`,
+                    category: newWish.category,
+                    author: newWish.author,
+                    timestamp: Date.now(),
+                    likes: 0,
+                    liked: false,
+                    mediaUrl: newWish.mediaUrl,
+                    mediaType: newWish.mediaType,
+                    trailId: currentUser?.trailId || null
+                };
+
+                setWishes([wish, ...wishes]);
+                
+                // Award points if first time
+                if (currentUser && !alreadyCompleted) {
+                    const result = MemoryTrailIntegration.awardPoints(POINTS, GAME_ID);
+                    if (result.success) {
+                        document.getElementById('playerPoints').textContent = result.newPoints + ' pts';
+                        setAlreadyCompleted(true);
+                        if (result.cardVersion > (currentUser.cardVersion || 1)) {
+                            setCardUpgraded(true);
+                            setNewCardVersion(result.cardVersion);
+                        }
+                        setShowSuccess(true);
+                    }
+                } else {
+                    setShowSuccess(true);
+                }
+                
+                // Reset form
+                setNewWish({ 
+                    type: 'text', 
+                    content: '', 
+                    category: 'hope', 
+                    author: currentUser?.fullName.split(' ')[0] || '', 
+                    mediaUrl: null, 
+                    mediaType: null 
+                });
+                setAudioURL(null);
+                setImagePreview(null);
+                setVideoPreview(null);
+                setRecordingTime(0);
+            };
+
+            const resetForm = () => {
+                setNewWish({ 
+                    type: 'text', 
+                    content: '', 
+                    category: 'hope', 
+                    author: currentUser?.fullName.split(' ')[0] || '', 
+                    mediaUrl: null, 
+                    mediaType: null 
+                });
+                setAudioURL(null);
+                setImagePreview(null);
+                setVideoPreview(null);
+                setRecordingTime(0);
+                if (isRecording) stopRecording();
+            };
+
+            const getCategoryColor = (categoryId) => {
+                return categories.find(c => c.id === categoryId)?.color || 'from-gray-400 to-gray-500';
+            };
+
+            const getCategoryIcon = (categoryId) => {
+                return categories.find(c => c.id === categoryId)?.icon || '💭';
+            };
+
+            const filteredWishes = filter === 'all' 
+                ? wishes 
+                : wishes.filter(w => w.category === filter);
+
+            const getTimeAgo = (timestamp) => {
+                const seconds = Math.floor((Date.now() - timestamp) / 1000);
+                if (seconds < 60) return 'Just now';
+                const minutes = Math.floor(seconds / 60);
+                if (minutes < 60) return `${minutes}m ago`;
+                const hours = Math.floor(minutes / 60);
+                if (hours < 24) return `${hours}h ago`;
+                const days = Math.floor(hours / 24);
+                return `${days}d ago`;
+            };
+
+            const formatTime = (seconds) => {
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                return `${mins}:${secs.toString().padStart(2, '0')}`;
+            };
+
+            // Audio Player Component
+            const AudioPlayer = ({ src }) => {
+                const [isPlaying, setIsPlaying] = useState(false);
+                const audioRef = useRef(null);
+
+                const togglePlay = () => {
+                    if (isPlaying) {
+                        audioRef.current.pause();
+                    } else {
+                        audioRef.current.play();
+                    }
+                    setIsPlaying(!isPlaying);
+                };
+
+                return (
+                    <div className="bg-white/20 rounded-lg p-3 flex items-center gap-3">
+                        <audio ref={audioRef} src={src} onEnded={() => setIsPlaying(false)} />
+                        <button 
+                            onClick={togglePlay}
+                            className="w-10 h-10 bg-white rounded-full flex items-center justify-center hover:scale-110 transition-transform"
+                        >
+                            {isPlaying ? (
+                                <PauseIcon className="w-5 h-5 text-purple-600" />
+                            ) : (
+                                <PlayIcon className="w-5 h-5 text-purple-600 ml-1" />
+                            )}
+                        </button>
+                        <div className="flex-1">
+                            <div className="text-white text-sm">🎤 Voice Message</div>
+                            <div className="h-1 bg-white/30 rounded-full mt-1">
+                                <div className="h-1 bg-white rounded-full w-0" />
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            // Welcome Screen
+            if (view === 'welcome') {
+                return (
+                    <div className="main-content min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 flex items-center justify-center p-6">
+                        <div className="max-w-2xl w-full bg-white/10 backdrop-blur-xl rounded-3xl p-8 border border-white/20 shadow-2xl text-center">
+                            <div className="inline-block bg-purple-500 text-white px-4 py-1 rounded-full text-sm font-semibold mb-4">
+                                📍 KIOSK 3
+                            </div>
+                            
+                            <div className="flex items-center justify-center gap-3 mb-4">
+                                <SparklesIcon className="w-12 h-12 text-yellow-300 animate-pulse" />
+                                <h1 className="text-5xl font-bold text-white">NP Wish Wall</h1>
+                                <SparklesIcon className="w-12 h-12 text-yellow-300 animate-pulse" />
+                            </div>
+                            
+                            <p className="text-xl text-purple-200 mb-6">
+                                Share your hopes, dreams, and memories for Ngee Ann Polytechnic
+                            </p>
+
+                            {currentUser && (
+                                <div className={`rounded-xl p-4 mb-6 ${alreadyCompleted ? 'bg-orange-500/20 border-2 border-orange-400/50' : 'bg-green-500/20 border-2 border-green-400/50'}`}>
+                                    <p className={alreadyCompleted ? 'text-orange-200' : 'text-green-200'}>
+                                        👋 Welcome, <strong>{currentUser.fullName.split(' ')[0]}</strong>!
+                                        {alreadyCompleted ? (
+                                            <span className="block mt-1">⚠️ You've already shared a wish. Add more for fun!</span>
+                                        ) : (
+                                            <span className="block mt-1">Share a wish to upgrade your card! ⭐</span>
+                                        )}
+                                    </p>
+                                </div>
+                            )}
+
+                            <div className="bg-white/10 rounded-xl p-6 mb-8 text-left">
+                                <h2 className="text-xl font-semibold text-white mb-4">What You Can Do</h2>
+                                <ul className="space-y-2 text-purple-200">
+                                    <li>✍️ Write a text wish or message</li>
+                                    <li>🎤 Record a voice message</li>
+                                    <li>📸 Upload a photo with a caption</li>
+                                    <li>🎥 Share a short video</li>
+                                    <li>❤️ Like other people's wishes</li>
+                                </ul>
+                            </div>
+
+                            <div className="flex gap-4">
+                                <button
+                                    onClick={() => setView('wall')}
+                                    className="flex-1 bg-white/20 text-white px-8 py-4 rounded-xl text-lg font-semibold hover:bg-white/30 transition-all border border-white/30"
+                                >
+                                    👀 View Wall
+                                </button>
+                                <button
+                                    onClick={() => { resetForm(); setView('submit'); }}
+                                    className="flex-1 bg-gradient-to-r from-pink-500 to-purple-500 text-white px-8 py-4 rounded-xl text-lg font-semibold hover:from-pink-600 hover:to-purple-600 transform hover:scale-105 transition-all shadow-lg"
+                                >
+                                    ✨ Add Your Wish
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Success Screen
+            if (showSuccess) {
+                return (
+                    <div className="main-content min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 flex items-center justify-center p-6">
+                        <div className="max-w-2xl w-full bg-white/10 backdrop-blur-xl rounded-3xl p-8 border border-white/20 shadow-2xl text-center celebrate">
+                            <div className="text-8xl mb-6">🎉</div>
+                            <h1 className="text-4xl font-bold text-white mb-4">Wish Shared!</h1>
+                            <p className="text-xl text-purple-200 mb-6">
+                                Your wish has been added to the wall!
+                            </p>
+
+                            {cardUpgraded && (
+                                <div className="bg-yellow-500/20 border-2 border-yellow-400/50 rounded-xl p-6 mb-6">
+                                    <p className="text-2xl font-bold text-yellow-300 mb-2">
+                                        🎊 Card Upgraded!
+                                    </p>
+                                    <p className="text-yellow-200">
+                                        Your student card is now Version {newCardVersion}!
+                                    </p>
+                                </div>
+                            )}
+
+                            {!alreadyCompleted && currentUser && (
+                                <div className="bg-green-500/20 border-2 border-green-400/50 rounded-xl p-6 mb-6">
+                                    <p className="text-green-300 text-lg">
+                                        ✅ +{POINTS} points earned!
+                                    </p>
+                                </div>
+                            )}
+
+                            <div className="bg-white/10 rounded-xl p-6 mb-6 text-left">
+                                <h3 className="text-xl font-bold text-white mb-3">📍 Next Steps</h3>
+                                <ul className="space-y-2 text-purple-200">
+                                    <li>• View the wall to see your wish and others</li>
+                                    <li>• Head to <strong>Kiosk 4</strong> for the next activity!</li>
+                                    <li>• Complete all 4 kiosks for the full experience!</li>
+                                </ul>
+                            </div>
+
+                            <div className="flex gap-4">
+                                <button
+                                    onClick={() => { setShowSuccess(false); setView('wall'); }}
+                                    className="flex-1 bg-white/20 text-white px-6 py-4 rounded-xl text-lg font-semibold hover:bg-white/30 transition-all border border-white/30"
+                                >
+                                    View Wall
+                                </button>
+                                <button
+                                    onClick={() => window.location.href = 'kiosk4.html'}
+                                    className="flex-1 bg-gradient-to-r from-pink-500 to-purple-500 text-white px-6 py-4 rounded-xl text-lg font-semibold hover:from-pink-600 hover:to-purple-600 transition-all shadow-lg flex items-center justify-center gap-2"
+                                >
+                                    Kiosk 4 <ArrowRightIcon className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Wall View
+            if (view === 'wall') {
+                return (
+                    <div className="main-content min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 p-6">
+                        <div className="max-w-7xl mx-auto mb-8">
+                            {/* Back Button */}
+                            <button
+                                onClick={() => setView('welcome')}
+                                className="mb-6 text-white hover:text-purple-200 transition-all flex items-center gap-2 text-lg"
+                            >
+                                <ArrowLeftIcon className="w-5 h-5" />
+                                Back to Start
+                            </button>
+
+                            <div className="text-center mb-8">
+                                <div className="flex items-center justify-center gap-3 mb-4">
+                                    <SparklesIcon className="w-10 h-10 text-yellow-300 animate-pulse" />
+                                    <h1 className="text-4xl font-bold text-white">NP Wish Wall</h1>
+                                    <SparklesIcon className="w-10 h-10 text-yellow-300 animate-pulse" />
+                                </div>
+                                <p className="text-lg text-purple-200">
+                                    <span className="font-semibold">{wishes.length}</span> wishes shared by our community
+                                </p>
+                            </div>
+
+                            <div className="flex justify-center gap-4 mb-6 flex-wrap">
+                                <button
+                                    onClick={() => { resetForm(); setView('submit'); }}
+                                    className="bg-gradient-to-r from-pink-500 to-purple-500 text-white px-8 py-4 rounded-xl text-lg font-semibold hover:from-pink-600 hover:to-purple-600 transform hover:scale-105 transition-all shadow-lg flex items-center gap-3"
+                                >
+                                    <SendIcon className="w-6 h-6" />
+                                    Add Your Wish
+                                </button>
+                                <button
+                                    onClick={() => setShowFilters(!showFilters)}
+                                    className="bg-white/10 backdrop-blur-sm text-white px-6 py-4 rounded-xl text-lg font-semibold hover:bg-white/20 transition-all flex items-center gap-3 border border-white/20"
+                                >
+                                    <FilterIcon className="w-6 h-6" />
+                                    Filter ({filter === 'all' ? 'All' : categories.find(c => c.id === filter)?.label})
+                                </button>
+                            </div>
+
+                            {showFilters && (
+                                <div className="flex justify-center gap-3 mb-6 flex-wrap">
+                                    <button
+                                        onClick={() => setFilter('all')}
+                                        className={`px-6 py-2 rounded-full font-semibold transition-all ${
+                                            filter === 'all'
+                                                ? 'bg-white text-purple-900 shadow-lg scale-105'
+                                                : 'bg-white/10 text-white hover:bg-white/20 border border-white/20'
+                                        }`}
+                                    >
+                                        All Wishes
+                                    </button>
+                                    {categories.map(cat => (
+                                        <button
+                                            key={cat.id}
+                                            onClick={() => setFilter(cat.id)}
+                                            className={`px-6 py-2 rounded-full font-semibold transition-all ${
+                                                filter === cat.id
+                                                    ? 'bg-white text-purple-900 shadow-lg scale-105'
+                                                    : 'bg-white/10 text-white hover:bg-white/20 border border-white/20'
+                                            }`}
+                                        >
+                                            {cat.icon} {cat.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="max-w-7xl mx-auto">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {filteredWishes.map((wish, index) => (
+                                    <div
+                                        key={wish.id}
+                                        className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20 hover:bg-white/20 transition-all transform hover:scale-105 hover:shadow-2xl fade-in"
+                                        style={{ animationDelay: `${index * 0.1}s` }}
+                                    >
+                                        <div className="flex items-start justify-between mb-4">
+                                            <div className={`bg-gradient-to-r ${getCategoryColor(wish.category)} text-white px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2`}>
+                                                <span>{getCategoryIcon(wish.category)}</span>
+                                                {categories.find(c => c.id === wish.category)?.label}
+                                            </div>
+                                            <div className="text-purple-200 text-sm">
+                                                {getTimeAgo(wish.timestamp)}
+                                            </div>
+                                        </div>
+
+                                        {/* Media Display */}
+                                        {wish.mediaType === 'audio' && wish.mediaUrl && (
+                                            <div className="mb-4">
+                                                <AudioPlayer src={wish.mediaUrl} />
+                                            </div>
+                                        )}
+
+                                        {wish.mediaType === 'image' && wish.mediaUrl && (
+                                            <div className="mb-4 rounded-lg overflow-hidden">
+                                                <img 
+                                                    src={wish.mediaUrl} 
+                                                    alt="Wish" 
+                                                    className="w-full h-48 object-cover"
+                                                />
+                                            </div>
+                                        )}
+
+                                        {wish.mediaType === 'video' && wish.mediaUrl && (
+                                            <div className="mb-4 rounded-lg overflow-hidden">
+                                                <video 
+                                                    src={wish.mediaUrl} 
+                                                    controls 
+                                                    className="w-full h-48 object-cover bg-black"
+                                                />
+                                            </div>
+                                        )}
+
+                                        <p className="text-white text-lg leading-relaxed mb-4">
+                                            {wish.content}
+                                        </p>
+
+                                        <div className="flex items-center justify-between pt-4 border-t border-white/10">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center text-white font-bold text-sm">
+                                                    {wish.author.charAt(0).toUpperCase()}
+                                                </div>
+                                                <span className="text-purple-200 font-medium">{wish.author}</span>
+                                            </div>
+                                            <button 
+                                                onClick={() => toggleLike(wish.id)}
+                                                className="flex items-center gap-2 group"
+                                            >
+                                                <HeartIcon 
+                                                    className={`w-5 h-5 transition-all ${
+                                                        wish.liked 
+                                                            ? 'text-pink-500 fill-pink-500' 
+                                                            : 'text-pink-400 group-hover:text-pink-500'
+                                                    }`}
+                                                    filled={wish.liked}
+                                                />
+                                                <span className="text-pink-300 text-sm">{wish.likes}</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {filteredWishes.length === 0 && (
+                                <div className="text-center py-20">
+                                    <SparklesIcon className="w-20 h-20 mx-auto text-purple-300 mb-4 opacity-50" />
+                                    <p className="text-2xl text-purple-200">No wishes yet in this category</p>
+                                    <p className="text-purple-300 mt-2">Be the first to share!</p>
+                                </div>
+                            )}
+
+                            {/* Navigation Footer */}
+                            <div className="mt-12 flex justify-center gap-4">
+                                <button
+                                    onClick={() => window.location.href = 'kiosk2.html'}
+                                    className="bg-white/10 text-white px-6 py-3 rounded-xl font-semibold hover:bg-white/20 transition-all border border-white/20 flex items-center gap-2"
+                                >
+                                    <ArrowLeftIcon className="w-5 h-5" />
+                                    Kiosk 2
+                                </button>
+                                <button
+                                    onClick={() => window.location.href = 'kiosk4.html'}
+                                    className="bg-gradient-to-r from-pink-500 to-purple-500 text-white px-6 py-3 rounded-xl font-semibold hover:from-pink-600 hover:to-purple-600 transition-all shadow-lg flex items-center gap-2"
+                                >
+                                    Kiosk 4
+                                    <ArrowRightIcon className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Submit View
+            return (
+                <div className="main-content min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 p-6 flex items-center justify-center">
+                    <div className="max-w-3xl w-full">
+                        <button
+                            onClick={() => { resetForm(); setView('wall'); }}
+                            className="mb-6 text-white hover:text-purple-200 transition-all flex items-center gap-2 text-lg"
+                        >
+                            <ArrowLeftIcon className="w-6 h-6" />
+                            Back to Wall
+                        </button>
+
+                        <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-8 border border-white/20 shadow-2xl">
+                            <div className="text-center mb-8">
+                                <h2 className="text-4xl font-bold text-white mb-2">Share Your Wish</h2>
+                                <p className="text-purple-200 text-lg">Your voice matters to the NP community</p>
+                                
+                                {currentUser && !alreadyCompleted && (
+                                    <div className="mt-4 inline-block bg-green-500/20 border border-green-400/50 rounded-full px-4 py-2 text-green-300 text-sm">
+                                        ⭐ First wish = Card upgrade!
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="space-y-6">
+                                {/* Submission Type Selection */}
+                                <div>
+                                    <label className="block text-white font-semibold mb-3 text-lg">How would you like to share?</label>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                        {submissionTypes.map(type => {
+                                            const Icon = type.Icon;
+                                            return (
+                                                <button
+                                                    key={type.id}
+                                                    onClick={() => {
+                                                        setNewWish({ ...newWish, type: type.id, mediaUrl: null, mediaType: null });
+                                                        setAudioURL(null);
+                                                        setImagePreview(null);
+                                                        setVideoPreview(null);
+                                                    }}
+                                                    className={`p-4 rounded-xl transition-all ${
+                                                        newWish.type === type.id
+                                                            ? 'bg-white text-purple-900 shadow-lg scale-105'
+                                                            : 'bg-white/10 text-white hover:bg-white/20 border border-white/20'
+                                                    }`}
+                                                >
+                                                    <Icon className="w-8 h-8 mx-auto mb-2" />
+                                                    <div className="font-semibold">{type.label}</div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* Category Selection */}
+                                <div>
+                                    <label className="block text-white font-semibold mb-3 text-lg">Choose a category</label>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                        {categories.map(cat => (
+                                            <button
+                                                key={cat.id}
+                                                onClick={() => setNewWish({ ...newWish, category: cat.id })}
+                                                className={`p-4 rounded-xl transition-all ${
+                                                    newWish.category === cat.id
+                                                        ? `bg-gradient-to-r ${cat.color} text-white shadow-lg scale-105`
+                                                        : 'bg-white/10 text-white hover:bg-white/20 border border-white/20'
+                                                }`}
+                                            >
+                                                <div className="text-2xl mb-2">{cat.icon}</div>
+                                                <div className="font-semibold text-sm">{cat.label}</div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Content Input Based on Type */}
+                                <div>
+                                    <label className="block text-white font-semibold mb-3 text-lg">Your wish</label>
+                                    
+                                    {/* Text Input */}
+                                    {newWish.type === 'text' && (
+                                        <textarea
+                                            value={newWish.content}
+                                            onChange={(e) => setNewWish({ ...newWish, content: e.target.value })}
+                                            placeholder="Share your hopes, dreams, or memories for NP..."
+                                            className="w-full h-40 px-6 py-4 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-400 backdrop-blur-sm text-lg resize-none"
+                                            maxLength={500}
+                                        />
+                                    )}
+
+                                    {/* Voice Recording */}
+                                    {newWish.type === 'voice' && (
+                                        <div className="bg-white/10 border border-white/20 rounded-xl p-8 text-center">
+                                            <MicIcon className={`w-16 h-16 mx-auto mb-4 ${isRecording ? 'text-red-500 recording-pulse' : 'text-purple-300'}`} />
+                                            
+                                            {!audioURL ? (
+                                                <>
+                                                    {isRecording && (
+                                                        <div className="text-red-400 text-2xl font-bold mb-4">
+                                                            🔴 Recording... {formatTime(recordingTime)}
+                                                        </div>
+                                                    )}
+                                                    <div className="flex justify-center gap-4">
+                                                        {!isRecording ? (
+                                                            <button
+                                                                onClick={startRecording}
+                                                                className="bg-red-500 hover:bg-red-600 text-white px-8 py-3 rounded-full font-semibold transition-all flex items-center gap-2"
+                                                            >
+                                                                <MicIcon className="w-5 h-5" />
+                                                                Start Recording
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                onClick={stopRecording}
+                                                                className="bg-gray-500 hover:bg-gray-600 text-white px-8 py-3 rounded-full font-semibold transition-all flex items-center gap-2"
+                                                            >
+                                                                <StopIcon className="w-5 h-5" />
+                                                                Stop Recording
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <div className="space-y-4">
+                                                    <div className="text-green-400 text-lg mb-2">✅ Recording saved!</div>
+                                                    <audio controls src={audioURL} className="mx-auto" />
+                                                    <div className="flex justify-center gap-4">
+                                                        <button
+                                                            onClick={deleteRecording}
+                                                            className="bg-red-500/50 hover:bg-red-500 text-white px-6 py-2 rounded-full font-semibold transition-all flex items-center gap-2"
+                                                        >
+                                                            <TrashIcon className="w-5 h-5" />
+                                                            Delete & Re-record
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            
+                                            <input
+                                                type="text"
+                                                value={newWish.content}
+                                                onChange={(e) => setNewWish({ ...newWish, content: e.target.value })}
+                                                placeholder="Add a caption (optional)..."
+                                                className="w-full mt-4 px-6 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                                            />
+                                        </div>
+                                    )}
+
+                                    {/* Image Upload */}
+                                    {newWish.type === 'image' && (
+                                        <div className="bg-white/10 border border-white/20 rounded-xl p-8 text-center">
+                                            {!imagePreview ? (
+                                                <>
+                                                    <ImageIcon className="w-16 h-16 mx-auto text-purple-300 mb-4" />
+                                                    <p className="text-purple-200 mb-4">Upload an image (max 5MB)</p>
+                                                    <input
+                                                        type="file"
+                                                        ref={fileInputRef}
+                                                        accept="image/*"
+                                                        onChange={handleImageUpload}
+                                                        className="hidden"
+                                                        id="imageInput"
+                                                    />
+                                                    <label
+                                                        htmlFor="imageInput"
+                                                        className="inline-block bg-purple-500 hover:bg-purple-600 text-white px-6 py-3 rounded-full font-semibold transition-all cursor-pointer"
+                                                    >
+                                                        📸 Choose Image
+                                                    </label>
+                                                </>
+                                            ) : (
+                                                <div className="space-y-4">
+                                                    <div className="text-green-400 text-lg mb-2">✅ Image uploaded!</div>
+                                                    <img 
+                                                        src={imagePreview} 
+                                                        alt="Preview" 
+                                                        className="max-h-64 mx-auto rounded-lg object-contain"
+                                                    />
+                                                    <button
+                                                        onClick={deleteImage}
+                                                        className="bg-red-500/50 hover:bg-red-500 text-white px-6 py-2 rounded-full font-semibold transition-all flex items-center gap-2 mx-auto"
+                                                    >
+                                                        <TrashIcon className="w-5 h-5" />
+                                                        Remove Image
+                                                    </button>
+                                                </div>
+                                            )}
+                                            
+                                            <input
+                                                type="text"
+                                                value={newWish.content}
+                                                onChange={(e) => setNewWish({ ...newWish, content: e.target.value })}
+                                                placeholder="Add a caption..."
+                                                className="w-full mt-4 px-6 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                                            />
+                                        </div>
+                                    )}
+
+                                    {/* Video Upload */}
+                                    {newWish.type === 'video' && (
+                                        <div className="bg-white/10 border border-white/20 rounded-xl p-8 text-center">
+                                            {!videoPreview ? (
+                                                <>
+                                                    <VideoIcon className="w-16 h-16 mx-auto text-purple-300 mb-4" />
+                                                    <p className="text-purple-200 mb-4">Upload a video (max 50MB)</p>
+                                                    <input
+                                                        type="file"
+                                                        ref={videoInputRef}
+                                                        accept="video/*"
+                                                        onChange={handleVideoUpload}
+                                                        className="hidden"
+                                                        id="videoInput"
+                                                    />
+                                                    <label
+                                                        htmlFor="videoInput"
+                                                        className="inline-block bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-full font-semibold transition-all cursor-pointer"
+                                                    >
+                                                        🎥 Choose Video
+                                                    </label>
+                                                </>
+                                            ) : (
+                                                <div className="space-y-4">
+                                                    <div className="text-green-400 text-lg mb-2">✅ Video uploaded!</div>
+                                                    <video 
+                                                        src={videoPreview} 
+                                                        controls 
+                                                        className="max-h-64 mx-auto rounded-lg"
+                                                    />
+                                                    <button
+                                                        onClick={deleteVideo}
+                                                        className="bg-red-500/50 hover:bg-red-500 text-white px-6 py-2 rounded-full font-semibold transition-all flex items-center gap-2 mx-auto"
+                                                    >
+                                                        <TrashIcon className="w-5 h-5" />
+                                                        Remove Video
+                                                    </button>
+                                                </div>
+                                            )}
+                                            
+                                            <input
+                                                type="text"
+                                                value={newWish.content}
+                                                onChange={(e) => setNewWish({ ...newWish, content: e.target.value })}
+                                                placeholder="Add a description..."
+                                                className="w-full mt-4 px-6 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Author Name */}
+                                <div>
+                                    <label className="block text-white font-semibold mb-3 text-lg">Your name</label>
+                                    <input
+                                        type="text"
+                                        value={newWish.author}
+                                        onChange={(e) => setNewWish({ ...newWish, author: e.target.value })}
+                                        placeholder="e.g., Alex T."
+                                        className="w-full px-6 py-4 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-400 backdrop-blur-sm text-lg"
+                                        maxLength={50}
+                                    />
+                                </div>
+
+                                {/* Submit Button */}
+                                <button
+                                    onClick={handleSubmit}
+                                    disabled={!newWish.author.trim() || (!newWish.content.trim() && !newWish.mediaUrl)}
+                                    className={`w-full py-5 rounded-xl text-xl font-bold transition-all shadow-lg flex items-center justify-center gap-3 ${
+                                        newWish.author.trim() && (newWish.content.trim() || newWish.mediaUrl)
+                                            ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white hover:from-pink-600 hover:to-purple-600 transform hover:scale-105 cursor-pointer'
+                                            : 'bg-gray-500 text-gray-300 cursor-not-allowed'
+                                    }`}
+                                >
+                                    <SparklesIcon className="w-6 h-6" />
+                                    Share Your Wish
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<NPWishWall />);
+    </script>
+</body>
+</html>

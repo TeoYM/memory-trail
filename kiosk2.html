@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kiosk 2 - Memory Trail Scanner</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        /* KIOSK 2 THEME: EMERALD GREEN */
+        :root {
+            --primary-color: #10b981;
+            --primary-dark: #059669;
+            --primary-shadow: rgba(16, 185, 129, 0.4);
+        }
+
+        .kiosk-badge {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 20px;
+            display: inline-block;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        
+        .scanner-area {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .scanner-box {
+            width: 100%;
+            max-width: 350px;
+            margin: 20px auto;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        #reader { width: 100% !important; }
+        #reader video { border-radius: 12px; }
+        
+        .manual-entry {
+            margin-top: 25px;
+            padding-top: 25px;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        .manual-entry p { color: #6b7280; margin-bottom: 10px; }
+        
+        .manual-form {
+            display: flex;
+            gap: 10px;
+            max-width: 350px;
+            margin: 0 auto;
+        }
+        
+        .manual-form input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 1rem;
+            text-transform: uppercase;
+        }
+        
+        .manual-form input:focus { outline: none; border-color: var(--primary-color); }
+        
+        .manual-form button {
+            padding: 12px 24px;
+            white-space: nowrap;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        .student-info-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .student-info-card h3 {
+            color: var(--primary-color);
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .info-grid { display: grid; gap: 12px; margin-bottom: 20px; }
+        
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 15px;
+            background: #f9fafb;
+            border-radius: 8px;
+        }
+        
+        .info-row .label { color: #6b7280; font-weight: 500; }
+        .info-row .value { color: #1f2937; font-weight: 600; }
+        
+        .game-status {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .game-status.ready {
+            background: #d1fae5;
+            color: #065f46;
+            border: 2px solid #a7f3d0;
+        }
+        
+        .game-status.completed {
+            background: #fef3c7;
+            color: #92400e;
+            border: 2px solid #fde68a;
+        }
+        
+        .game-info {
+            background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #d1fae5;
+        }
+        
+        .game-info h4 {
+            color: var(--primary-dark);
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .game-info ul { list-style: none; padding: 0; margin: 0; }
+        
+        .game-info li {
+            padding: 5px 0;
+            color: #4b5563;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .kiosk-nav {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .kiosk-nav h3 { margin-bottom: 15px; color: #374151; }
+        
+        .nav-buttons { display: flex; gap: 10px; }
+        
+        .nav-buttons a {
+            flex: 1;
+            text-align: center;
+            text-decoration: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .nav-buttons a.secondary { background: #f3f4f6; color: #374151; }
+        .nav-buttons a.secondary:hover { background: #e5e7eb; }
+        
+        /* Navigation Button Color for Kiosk 2 (Points to Kiosk 3 - Amber) */
+        .nav-buttons a.primary {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+        }
+        
+        .nav-buttons a.primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+        }
+        
+        .play-button {
+            width: 100%;
+            padding: 16px;
+            font-size: 1.1rem;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        .play-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px var(--primary-shadow);
+        }
+        
+        .scan-another-btn {
+            width: 100%;
+            padding: 14px;
+            margin-top: 12px;
+            background: #f3f4f6;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            color: #374151;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .scan-another-btn:hover { background: #e5e7eb; }
+        
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; font-family: 'Segoe UI', sans-serif; }
+        .header { text-align: center; margin-bottom: 20px; }
+        .header h1 { margin: 10px 0; color: #1f2937; }
+        .header p { color: #6b7280; }
+        
+        @media (max-width: 480px) {
+            .manual-form { flex-direction: column; }
+            .manual-form button { width: 100%; }
+            .nav-buttons { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="kiosk-badge">📍 KIOSK 2</div>
+            <h1>🧩 Rebuilding NP</h1>
+            <p>Scan your QR code to play the Photo Puzzle!</p>
+        </header>
+
+        <!-- Scanner Area -->
+        <div class="scanner-area" id="scannerArea">
+            <h3 style="margin-bottom: 15px; color: #374151;">📱 Scan Your QR Code</h3>
+            <div class="scanner-box">
+                <div id="reader"></div>
+            </div>
+            
+            <div class="manual-entry">
+                <p>Or enter your Trail ID manually:</p>
+                <form id="manualForm" class="manual-form">
+                    <input type="text" id="manualId" placeholder="MT-XXXXXX" autocomplete="off">
+                    <button type="submit">Go</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Student Info Display (Hidden by default) -->
+        <div class="student-info-card" id="studentInfo" style="display: none;">
+            <h3>
+                <span style="font-size: 1.5rem;">✓</span>
+                Student Verified
+            </h3>
+            
+            <div class="info-grid">
+                <div class="info-row">
+                    <span class="label">Name</span>
+                    <span class="value" id="scanName">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Trail ID</span>
+                    <span class="value" id="scanId">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Card Version</span>
+                    <span class="value" id="scanVersion">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Current Points</span>
+                    <span class="value" id="scanPoints">-</span>
+                </div>
+            </div>
+            
+            <!-- Game Status -->
+            <div class="game-status" id="gameStatus"></div>
+            
+            <!-- Game Info -->
+            <div class="game-info">
+                <h4>🎮 About This Game</h4>
+                <ul>
+                    <li>🧩 Restore faded historical photos of NP</li>
+                    <li>⏱️ Drag and drop puzzle pieces into place</li>
+                    <li>📊 Score based on <strong>Speed</strong> and <strong>Accuracy</strong></li>
+                    <li>⭐ Choose your difficulty level</li>
+                    <li>✨ <strong>Maximum: 60 points</strong></li>
+                </ul>
+            </div>
+            
+            <!-- Play Button -->
+            <button class="play-button" id="startActivity">
+                <span style="font-size: 1.3rem;">🧩</span>
+                Play Rebuilding NP
+            </button>
+            
+            <!-- Scan Another Button -->
+            <button class="scan-another-btn" id="scanAnother">
+                🔄 Scan Another Student
+            </button>
+        </div>
+
+        <!-- Kiosk Navigation -->
+        <div class="kiosk-nav">
+            <h3>🗺️ Memory Trail Kiosks</h3>
+            <div class="nav-buttons">
+                <a href="kiosk.html" class="secondary">
+                    ← Kiosk 1
+                </a>
+                <a href="dashboard.html" class="secondary">
+                    Dashboard
+                </a>
+                <!-- CORRECTED LINK LABEL BELOW -->
+                <a href="kiosk3.html" class="primary">
+                    Kiosk 3: Wish Wall →
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== Configuration =====
+        const GAME_ID = 'kiosk2-rebuilding-np';
+        const GAME_NAME = 'Rebuilding NP';
+        const MAX_POINTS = 60;
+        
+        let html5QrcodeScanner = null;
+
+        // ===== Initialize Scanner =====
+        function initScanner() {
+            if (html5QrcodeScanner) {
+                html5QrcodeScanner.clear().catch(err => console.log(err));
+            }
+            
+            html5QrcodeScanner = new Html5QrcodeScanner(
+                "reader", 
+                { 
+                    fps: 10, 
+                    qrbox: { width: 250, height: 250 },
+                    aspectRatio: 1.0,
+                    showTorchButtonIfSupported: true
+                }
+            );
+            
+            html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+        }
+
+        // ===== Scan Success Handler =====
+        function onScanSuccess(decodedText) {
+            try {
+                const data = JSON.parse(decodedText);
+                
+                if (data.type === 'memory-trail-user') {
+                    const users = JSON.parse(localStorage.getItem('memoryTrailUsers') || '[]');
+                    const user = users.find(u => u.trailId === data.trailId);
+                    
+                    if (user) {
+                        showStudentInfo(user);
+                        if (html5QrcodeScanner) {
+                            html5QrcodeScanner.clear().catch(err => console.log(err));
+                        }
+                    } else {
+                        showError('User not found! Please register first.');
+                    }
+                } else {
+                    showError('Invalid QR code. Please use your Memory Trail QR code.');
+                }
+            } catch (e) {
+                console.log('Invalid QR code format:', e);
+                showError('Could not read QR code. Please try again.');
+            }
+        }
+
+        function onScanFailure(error) {
+            // Silently ignore failures
+        }
+
+        // ===== Show Student Info =====
+        function showStudentInfo(user) {
+            document.getElementById('scannerArea').style.display = 'none';
+            
+            document.getElementById('scanName').textContent = user.fullName;
+            document.getElementById('scanId').textContent = user.trailId;
+            document.getElementById('scanVersion').textContent = 'Version ' + (user.cardVersion || 1);
+            document.getElementById('scanPoints').textContent = (user.points || 0) + ' points';
+            
+            const gameStatus = document.getElementById('gameStatus');
+            const hasCompleted = user.completedGames && user.completedGames.includes(GAME_ID);
+            
+            if (hasCompleted) {
+                gameStatus.className = 'game-status completed';
+                gameStatus.innerHTML = `
+                    <strong>⚠️ Already Completed</strong><br>
+                    <span style="font-size: 0.9rem;">You can play again for fun, but points won't be awarded twice.</span>
+                `;
+            } else {
+                gameStatus.className = 'game-status ready';
+                gameStatus.innerHTML = `
+                    <strong>✅ Ready to Play!</strong><br>
+                    <span style="font-size: 0.9rem;">Complete the puzzle to earn up to <strong>${MAX_POINTS} points</strong>!</span>
+                `;
+            }
+            
+            document.getElementById('studentInfo').style.display = 'block';
+            sessionStorage.setItem('kioskUser', JSON.stringify(user));
+        }
+
+        function showError(message) {
+            alert(message);
+        }
+
+        // ===== Event Listeners =====
+        document.getElementById('manualForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const inputId = document.getElementById('manualId').value.trim().toUpperCase();
+            
+            if (!inputId) {
+                showError('Please enter your Trail ID');
+                return;
+            }
+            
+            const users = JSON.parse(localStorage.getItem('memoryTrailUsers') || '[]');
+            const user = users.find(u => u.trailId === inputId);
+            
+            if (user) {
+                showStudentInfo(user);
+                if (html5QrcodeScanner) {
+                    html5QrcodeScanner.clear().catch(err => console.log(err));
+                }
+            } else {
+                showError('Trail ID not found! Please check and try again.');
+            }
+        });
+
+        document.getElementById('scanAnother').addEventListener('click', function() {
+            document.getElementById('studentInfo').style.display = 'none';
+            sessionStorage.removeItem('kioskUser');
+            document.getElementById('manualId').value = '';
+            document.getElementById('scannerArea').style.display = 'block';
+            initScanner();
+        });
+
+        document.getElementById('startActivity').addEventListener('click', function() {
+            const kioskUser = sessionStorage.getItem('kioskUser');
+            if (!kioskUser) {
+                showError('Session expired. Please scan again.');
+                return;
+            }
+            window.location.href = 'kiosk2-game.html';
+        });
+
+        // ===== Init =====
+        document.addEventListener('DOMContentLoaded', function() {
+            const existingUser = sessionStorage.getItem('kioskUser');
+            if (existingUser) {
+                try {
+                    const user = JSON.parse(existingUser);
+                    const users = JSON.parse(localStorage.getItem('memoryTrailUsers') || '[]');
+                    const freshUser = users.find(u => u.trailId === user.trailId);
+                    if (freshUser) {
+                        showStudentInfo(freshUser);
+                        return;
+                    }
+                } catch (e) { console.log(e); }
+            }
+            initScanner();
+        });
+    </script>
+</body>
+</html>
